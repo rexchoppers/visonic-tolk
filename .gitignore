@@ -1,0 +1,7 @@
+/tolk
+/dist/
+*.log
+*.pcap
+coverage.out
+.DS_Store
+.env
