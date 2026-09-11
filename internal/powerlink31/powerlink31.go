@@ -126,6 +126,10 @@ func (f Frame) Encode() []byte {
 	return out
 }
 
+// frameType pulls the quoted message type out of the header.
+//
+//	in:  4CE30023"VIS-BBA"0001L001234#2A4CC3
+//	out: VIS-BBA
 func frameType(head string) (string, error) {
 	open := strings.IndexByte(head, '"')
 	if open < 0 {
@@ -140,6 +144,14 @@ func frameType(head string) (string, error) {
 	return head[open+1 : open+1+end], nil
 }
 
+// address fills in who the frame is from and which message it is.
+//
+//	in:  4CE30023"VIS-BBA"0001L001234#2A4CC3
+//	out: MsgID 1, Account 001234, Panel 2A4CC3
+//
+// None of the three is delimited. The message id is the four characters before
+// the L, the account runs from the L to the #, and the panel is the six after
+// the #. NAK frames carry none of it and never reach here.
 func address(head string, f *Frame) error {
 	l := strings.IndexByte(head, 'L')
 	hash := strings.IndexByte(head, '#')
