@@ -1,6 +1,7 @@
 # visonic-tolk
 
-- No comments in code.
+- No comments in code unless absolutely necessary.
+- Function names short and plain.
 - Claude never commits and never pushes. The human commits.
 - Claude generates code. The human reviews every line before it lands.
 - Nothing is done until it has been physically tested against the real panel.
