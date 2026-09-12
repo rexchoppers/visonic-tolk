@@ -1,6 +1,6 @@
 #!/usr/bin/with-contenv bashio
 
-# Exported, not just assigned. The addon this replaces set these as shell
+# Exported, not just assigned. The app this replaces set these as shell
 # variables, so the process never saw any of them and every option in the
 # Home Assistant UI did nothing.
 export VISONIC_HOST="$(bashio::config 'visonic_host')"
