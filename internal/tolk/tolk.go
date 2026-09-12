@@ -109,7 +109,7 @@ func (t *Tolk) servePanel(ctx context.Context, c net.Conn) {
 	t.dialCloud(ctx, p)
 	t.sendStatus()
 
-	p.conn.Run(ctx, func(b []byte) { t.onFrame(route.Panel, p, b) })
+	p.conn.Run(ctx, func(b []byte) { t.onFrame(route.Panel, p.conn, p, b) })
 
 	t.mu.Lock()
 	delete(t.panels, p.id)
@@ -141,7 +141,7 @@ func (t *Tolk) dialCloud(parent context.Context, p *panel) {
 		t.mu.Unlock()
 		t.sendStatus()
 
-		v.Run(ctx, func(b []byte) { t.onFrame(route.Visonic, p, b) })
+		v.Run(ctx, func(b []byte) { t.onFrame(route.Visonic, v, p, b) })
 
 		t.mu.Lock()
 		p.visonic = nil
@@ -158,7 +158,7 @@ func (t *Tolk) serveMonitor(ctx context.Context, c net.Conn) {
 	t.mu.Unlock()
 	t.sendStatus()
 
-	m.Run(ctx, func(b []byte) { t.onMonitor(b) })
+	m.Run(ctx, func(b []byte) { t.onMonitor(m, b) })
 
 	t.mu.Lock()
 	t.monitors = remove(t.monitors, m)
@@ -201,12 +201,20 @@ func (t *Tolk) keepalive(ctx context.Context, p *panel) {
 }
 
 // onFrame handles a whole powerlink31 frame from a panel or its cloud link.
-func (t *Tolk) onFrame(from route.Peer, p *panel, raw []byte) {
+func (t *Tolk) onFrame(from route.Peer, src *conn.Conn, p *panel, raw []byte) {
 	f, err := powerlink31.Decode(raw)
 	if err != nil {
 		t.log.Warn("undecodable frame", "from", from, "err", err, "bytes", raw)
 		return
 	}
+
+	// This peer has answered, so let its next message go. Any frame counts,
+	// not only an acknowledgement: the python releases on an ack, and releases
+	// again on a normal message from the same peer, because a panel that
+	// answers with data rather than an ack would otherwise hold the gate shut
+	// for the full timeout. Released before routing, so forwarding never holds
+	// up the reply.
+	src.Ack()
 
 	if from == route.Panel {
 		t.remember(p, f)
@@ -217,11 +225,15 @@ func (t *Tolk) onFrame(from route.Peer, p *panel, raw []byte) {
 
 // onMonitor handles bare panel messages from Home Assistant, which are wrapped
 // into a frame before anything else looks at them.
-func (t *Tolk) onMonitor(raw []byte) {
+func (t *Tolk) onMonitor(src *conn.Conn, raw []byte) {
 	data, isAck, err := message.FromMonitor(raw)
 	if err != nil {
 		t.log.Warn("unusable message from home assistant", "err", err, "bytes", raw)
 		return
+	}
+
+	if isAck {
+		src.Ack()
 	}
 
 	t.noteDownload(data)

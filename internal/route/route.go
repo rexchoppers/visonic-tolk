@@ -100,6 +100,12 @@ func waitsForAck(f powerlink31.Frame) bool {
 	return f.Type == powerlink31.TypeBBA || f.Type == powerlink31.TypeAdmCID
 }
 
+// IsAck reports whether a frame is an acknowledgement, which is what releases
+// the sending peer's gate.
+func IsAck(f powerlink31.Frame) bool {
+	return isAck(f)
+}
+
 func isAck(f powerlink31.Frame) bool {
 	switch f.Type {
 	case powerlink31.TypeAck, powerlink31.TypeAdmAck, powerlink31.TypeNak:
