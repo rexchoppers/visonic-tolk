@@ -64,7 +64,12 @@ The certificate for port 8443 is generated on first start and kept in
 | `keepalive_timer` | `32` |
 | `watchdog_timeout` | `120` |
 | `stealth_mode_timeout` | `10` |
+| `ka_time` | `10` |
 | `log_level` | `info` |
+
+`ka_time` is how many seconds the panel is told to leave between check-ins. Ten
+is what the original sends. Whether it paces anything else the panel does is
+unknown.
 
 Setting `log_level` to `debug` logs every frame in and out as spaced hex, which
 can be compared directly against the original's log. Anything the proxy does not

@@ -46,6 +46,9 @@ type Config struct {
 
 	// CertDir holds the self signed certificate the panel is served.
 	CertDir string
+
+	// KaTime is the seconds the panel is told to leave between check-ins.
+	KaTime int
 }
 
 // panel is one alarm panel and the cloud link that belongs to it.
@@ -105,6 +108,7 @@ func (t *Tolk) Run(ctx context.Context) error {
 				Upstream:    t.cfg.WebUpstream,
 				ConnectPort: portOf(t.cfg.PanelAddr),
 				CertDir:     t.cfg.CertDir,
+				KaTime:      t.cfg.KaTime,
 			}, t.log).Serve(ctx)
 		}()
 	}

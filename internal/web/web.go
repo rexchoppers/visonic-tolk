@@ -31,6 +31,11 @@ type Config struct {
 	Upstream    string // https://host:port that Visonic answers on
 	ConnectPort string // the port the panel is told to open, 5001
 	CertDir     string // where the self signed certificate is kept
+
+	// KaTime is the seconds the panel is told to wait between check-ins. Ten
+	// is what the python sends. Whether it paces anything else the panel does
+	// is unknown, so it is exposed to be experimented with.
+	KaTime int
 }
 
 type Server struct {
@@ -40,6 +45,10 @@ type Server struct {
 }
 
 func New(cfg Config, log *slog.Logger) *Server {
+	if cfg.KaTime <= 0 {
+		cfg.KaTime = 10
+	}
+
 	return &Server{
 		cfg: cfg,
 		log: log,
@@ -190,7 +199,7 @@ func (s *Server) connectCommand(upstream []byte) []byte {
 		"name":   "connect",
 		"params": map[string]any{"port": port(s.cfg.ConnectPort)},
 	}}
-	out["ka_time"] = 10
+	out["ka_time"] = s.cfg.KaTime
 	out["version"] = 3
 
 	b, err := json.Marshal(out)

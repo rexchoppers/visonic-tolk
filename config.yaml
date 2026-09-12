@@ -1,6 +1,6 @@
 name: "Visonic Tolk"
 description: "Proxy between Visonic Panels, Cloud and HA"
-version: "0.1.5"
+version: "0.1.6"
 slug: "visonic_tolk"
 url: https://github.com/rexchoppers/visonic-tolk
 init: false
@@ -31,6 +31,7 @@ options:
   keepalive_timer: 32
   watchdog_timeout: 120
   stealth_mode_timeout: 10
+  ka_time: 10
   log_level: "info"
 
 schema:
@@ -42,4 +43,5 @@ schema:
   keepalive_timer: int(1,3600)
   watchdog_timeout: int(1,3600)
   stealth_mode_timeout: int(1,3600)
+  ka_time: int(1,3600)
   log_level: list(debug|info|warning|error|critical)

@@ -41,6 +41,7 @@ func FromEnv() Config {
 		WebAddr:     ":" + webPort,
 		WebUpstream: "https://" + net.JoinHostPort(host, webPort),
 		CertDir:     env("SSL_CERT_PATH", defaultCertDir),
+		KaTime:      number("KA_TIME", 10),
 	}
 }
 
@@ -62,6 +63,14 @@ func env(name, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func number(name string, fallback int) int {
+	v, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
 }
 
 func seconds(name string, fallback time.Duration) time.Duration {
