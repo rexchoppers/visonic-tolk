@@ -1,5 +1,5 @@
 name: "Visonic Tolk"
-description: "Proxy between a Visonic panel, the Visonic cloud, and Home Assistant"
+description: "Proxy between Visonic Panels, Cloud and HA"
 version: "0.1.0"
 slug: "visonic_tolk"
 url: https://github.com/rexchoppers/visonic-tolk
