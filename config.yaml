@@ -1,0 +1,41 @@
+name: "Visonic Tolk"
+description: "Proxy between a Visonic panel, the Visonic cloud, and Home Assistant"
+version: "0.1.0"
+slug: "visonic_tolk"
+url: https://github.com/rexchoppers/visonic-tolk
+init: false
+startup: services
+host_network: false
+
+arch:
+  - aarch64
+  - amd64
+  - armv7
+
+ports:
+  5001/tcp: 5001
+  5002/tcp: 5002
+
+ports_description:
+  5001/tcp: Panel connection
+  5002/tcp: Home Assistant connection
+
+options:
+  visonic_host: "52.58.105.181"
+  message_port: "5001"
+  alarm_monitor_port: "5002"
+  visonic_reconnect_interval: 10
+  keepalive_timer: 32
+  watchdog_timeout: 120
+  stealth_mode_timeout: 10
+  log_level: "info"
+
+schema:
+  visonic_host: str
+  message_port: str
+  alarm_monitor_port: str
+  visonic_reconnect_interval: int(1,3600)
+  keepalive_timer: int(1,3600)
+  watchdog_timeout: int(1,3600)
+  stealth_mode_timeout: int(1,3600)
+  log_level: list(debug|info|warning|error|critical)
