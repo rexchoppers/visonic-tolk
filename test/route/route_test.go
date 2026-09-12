@@ -19,8 +19,9 @@ func frame(typ string, data []byte) powerlink31.Frame {
 	return powerlink31.Frame{Type: typ, Data: data}
 }
 
-func b0() []byte { return []byte{0x0d, 0xb0, 0x03, 0x18, 0x0d, 0x0a} }
-func e1() []byte { return []byte{0x0d, 0xe1, 0x01, 0x02, 0x0a} }
+func b0() []byte   { return []byte{0x0d, 0xb0, 0x03, 0x18, 0x0d, 0x0a} }
+func e1() []byte   { return []byte{0x0d, 0xe1, 0x01, 0x02, 0x0a} }
+func stop() []byte { return []byte{0x0d, 0x0b, 0xf4, 0x0a} }
 
 func TestRoute(t *testing.T) {
 	cases := []struct {
@@ -87,6 +88,16 @@ func TestRoute(t *testing.T) {
 			name: "an action from home assistant is answered here, not forwarded",
 			from: route.Monitor, frame: frame(powerlink31.TypeBBA, e1()), state: both,
 			want: route.Plan{Local: true, AckBack: true},
+		},
+		{
+			name: "a stop from home assistant is acknowledged but not passed on",
+			from: route.Monitor, frame: frame(powerlink31.TypeBBA, stop()), state: both,
+			want: route.Plan{AckBack: true},
+		},
+		{
+			name: "a b0 from home assistant is not filtered",
+			from: route.Monitor, frame: frame(powerlink31.TypeBBA, b0()), state: both,
+			want: route.Plan{Send: []route.Send{{To: route.Panel, WantAck: true}}},
 		},
 	}
 

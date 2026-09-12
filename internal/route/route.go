@@ -4,6 +4,7 @@ package route
 
 import (
 	"bytes"
+	"slices"
 
 	"github.com/rexchoppers/visonic-tolk/internal/message"
 	"github.com/rexchoppers/visonic-tolk/internal/powerlink31"
@@ -87,7 +88,25 @@ func fromMonitor(f powerlink31.Frame) Plan {
 	if message.Class(f.Data) == message.ClassAction {
 		return Plan{Local: true, AckBack: true}
 	}
+
+	// Acknowledged so Home Assistant stops asking, but never passed on.
+	if filtered(f.Data) {
+		return Plan{AckBack: true}
+	}
+
 	return Plan{Send: []Send{to(Panel, f)}}
+}
+
+// filteredClasses are messages Home Assistant may send that must not reach the
+// panel. 0b is a stop, which the panel deliberately never answers, so
+// forwarding it only leaves the sender waiting.
+//
+// The python filters b0 messages by their command byte too, but ships with
+// that list empty, so there is nothing to carry over.
+var filteredClasses = []byte{0x0b}
+
+func filtered(data []byte) bool {
+	return slices.Contains(filteredClasses, message.Class(data))
 }
 
 func to(p Peer, f powerlink31.Frame) Send {

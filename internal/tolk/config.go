@@ -17,6 +17,8 @@ const (
 	defaultKeepalive   = 32 * time.Second
 	defaultWatchdog    = 120 * time.Second
 	defaultStealth     = 10 * time.Second
+	defaultWebPort     = "8443"
+	defaultCertDir     = "/data/certs"
 )
 
 // FromEnv reads the same names const.py uses, so an addon script that exports
@@ -24,6 +26,7 @@ const (
 func FromEnv() Config {
 	host := env("VISONIC_HOST", defaultVisonicHost)
 	port := env("MESSAGE_PORT", defaultMessagePort)
+	webPort := env("WEBSERVER_PORT", defaultWebPort)
 
 	return Config{
 		PanelAddr:   ":" + port,
@@ -34,6 +37,10 @@ func FromEnv() Config {
 		Watchdog:    seconds("WATCHDOG_TIMEOUT", defaultWatchdog),
 
 		StealthTimeout: seconds("STEALTH_MODE_TIMEOUT", defaultStealth),
+
+		WebAddr:     ":" + webPort,
+		WebUpstream: "https://" + net.JoinHostPort(host, webPort),
+		CertDir:     env("SSL_CERT_PATH", defaultCertDir),
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/rexchoppers/visonic-tolk/internal/message"
 	"github.com/rexchoppers/visonic-tolk/internal/powerlink31"
 	"github.com/rexchoppers/visonic-tolk/internal/route"
+	"github.com/rexchoppers/visonic-tolk/internal/web"
 )
 
 type Config struct {
@@ -34,6 +35,17 @@ type Config struct {
 	// StealthTimeout lets the cloud back if Home Assistant stops asking for
 	// stealth, so a client that disappears mid download cannot strand a panel.
 	StealthTimeout time.Duration
+
+	// WebAddr is where the panel checks in over https. Its reply is what tells
+	// the panel to open its message connection, so with this unset the panel
+	// never connects at all.
+	WebAddr string
+
+	// WebUpstream is the https address Visonic answers those check-ins on.
+	WebUpstream string
+
+	// CertDir holds the self signed certificate the panel is served.
+	CertDir string
 }
 
 // panel is one alarm panel and the cloud link that belongs to it.
@@ -77,7 +89,7 @@ func (t *Tolk) Run(ctx context.Context) error {
 	t.base = ctx
 	t.mu.Unlock()
 
-	errs := make(chan error, 2)
+	errs := make(chan error, 3)
 
 	go func() {
 		errs <- conn.Listen(ctx, t.cfg.PanelAddr, t.log, func(c net.Conn) { t.servePanel(ctx, c) })
@@ -85,6 +97,17 @@ func (t *Tolk) Run(ctx context.Context) error {
 	go func() {
 		errs <- conn.Listen(ctx, t.cfg.MonitorAddr, t.log, func(c net.Conn) { t.serveMonitor(ctx, c) })
 	}()
+
+	if t.cfg.WebAddr != "" {
+		go func() {
+			errs <- web.New(web.Config{
+				Addr:        t.cfg.WebAddr,
+				Upstream:    t.cfg.WebUpstream,
+				ConnectPort: portOf(t.cfg.PanelAddr),
+				CertDir:     t.cfg.CertDir,
+			}, t.log).Serve(ctx)
+		}()
+	}
 
 	select {
 	case err := <-errs:
@@ -407,6 +430,15 @@ func (t *Tolk) msgID() int {
 		t.nextMsg = 1
 	}
 	return t.nextMsg
+}
+
+// portOf takes the port out of a listen address, so the panel is told to
+// connect to the port tolk is actually listening on.
+func portOf(addr string) string {
+	if _, port, err := net.SplitHostPort(addr); err == nil {
+		return port
+	}
+	return strings.TrimPrefix(addr, ":")
 }
 
 // asHex renders bytes the way the python logs them, spaced, so a line here can

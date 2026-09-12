@@ -20,6 +20,9 @@ func TestFromEnvDefaultsToThePythonsValues(t *testing.T) {
 		Watchdog:    120 * time.Second,
 
 		StealthTimeout: 10 * time.Second,
+		WebAddr:        ":8443",
+		WebUpstream:    "https://52.58.105.181:8443",
+		CertDir:        "/data/certs",
 	}
 	if cfg != want {
 		t.Errorf("\n got %+v\nwant %+v", cfg, want)
@@ -34,6 +37,8 @@ func TestFromEnvReadsTheEnvironment(t *testing.T) {
 	t.Setenv("KEEPALIVE_TIMER", "7")
 	t.Setenv("WATCHDOG_TIMEOUT", "90")
 	t.Setenv("STEALTH_MODE_TIMEOUT", "5")
+	t.Setenv("WEBSERVER_PORT", "9443")
+	t.Setenv("SSL_CERT_PATH", "/tmp/certs")
 
 	cfg := tolk.FromEnv()
 
@@ -46,6 +51,9 @@ func TestFromEnvReadsTheEnvironment(t *testing.T) {
 		Watchdog:    90 * time.Second,
 
 		StealthTimeout: 5 * time.Second,
+		WebAddr:        ":9443",
+		WebUpstream:    "https://panel.example:9443",
+		CertDir:        "/tmp/certs",
 	}
 	if cfg != want {
 		t.Errorf("\n got %+v\nwant %+v", cfg, want)

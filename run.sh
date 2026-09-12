@@ -6,6 +6,7 @@
 export VISONIC_HOST="$(bashio::config 'visonic_host')"
 export MESSAGE_PORT="$(bashio::config 'message_port')"
 export ALARM_MONITOR_PORT="$(bashio::config 'alarm_monitor_port')"
+export WEBSERVER_PORT="$(bashio::config 'webserver_port')"
 export VISONIC_RECONNECT_INTERVAL="$(bashio::config 'visonic_reconnect_interval')"
 export KEEPALIVE_TIMER="$(bashio::config 'keepalive_timer')"
 export WATCHDOG_TIMEOUT="$(bashio::config 'watchdog_timeout')"
