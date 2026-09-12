@@ -15,7 +15,37 @@ var (
 	Ack       = []byte{0x0d, 0x02, 0xfd, 0x0a}
 	Keepalive = []byte{0x0d, 0xb0, 0x01, 0x6a, 0x00, 0x43, 0xa0, 0x0a}
 
-	Disconnect = []byte{0x0d, 0xad, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43, 0x05, 0x0a}
+	Disconnect   = []byte{0x0d, 0xad, 0x0a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x43, 0x05, 0x0a}
+	Download     = []byte{0x0d, 0x09, 0xf6, 0x0a}
+	ExitDownload = []byte{0x0d, 0x0f, 0xf0, 0x0a}
+)
+
+// Status is the e0 message tolk invents to tell Home Assistant what it can
+// see. Home Assistant asks for it with an e1 01 action.
+//
+//	out: 0d e0 01 01 01 01 00 00 43 <checksum> 0a
+func Status(panels, visonic, monitors int, proxy, stealth, download bool) []byte {
+	return Wrap([]byte{
+		0xe0,
+		byte(panels), byte(visonic), byte(monitors),
+		flag(proxy), flag(stealth), flag(download),
+		0x43,
+	})
+}
+
+func flag(on bool) byte {
+	if on {
+		return 0x01
+	}
+	return 0x00
+}
+
+// The message classes anything here branches on.
+const (
+	ClassDownload = 0x24 // home assistant reading the panel's eprom
+	ClassPanel    = 0xb0 // panel state
+	ClassStatus   = 0xe0 // what tolk can see, invented here
+	ClassAction   = 0xe1 // home assistant asking tolk to do something
 )
 
 // Class is the byte that says what kind of message this is, b0 and e0 and e1
@@ -68,6 +98,50 @@ func Wrap(body []byte) []byte {
 // IsAck reports whether a whole message is an acknowledgement.
 func IsAck(msg []byte) bool {
 	return len(msg) > 1 && msg[0] == 0x0d && msg[1] == 0x02
+}
+
+// maxLen bounds the search for a terminator, so a corrupt stream resyncs
+// rather than buffering without end.
+const maxLen = 512
+
+// Split cuts a stream of bare panel messages, for bufio.Scanner.
+//
+//	in:  0d e1 02 01 43 07 0a 0d e1 01 00 43 09 0a
+//	out: the first message, leaving the second buffered
+//
+// There is no length to read, and 0x0a occurs inside bodies, so the end is
+// the first terminator whose checksum adds up. The python reads one message
+// per read instead, and loses the second whenever two arrive together.
+func Split(data []byte, atEOF bool) (int, []byte, error) {
+	if len(data) == 0 {
+		return 0, nil, nil
+	}
+
+	// A bare body carries no framing, so there is no boundary to find and the
+	// read has to be taken as it came. Home Assistant may send one of these.
+	if data[0] != 0x0d {
+		return len(data), data, nil
+	}
+
+	for i := 2; i < len(data) && i <= maxLen; i++ {
+		if data[i] != 0x0a {
+			continue
+		}
+		if Checksum(data[1:i-1]) == data[i-1] {
+			return i + 1, data[:i+1], nil
+		}
+	}
+
+	// Nothing adds up within a message's worth of bytes, so this 0x0d did not
+	// start one. Step over it rather than buffering for ever.
+	if len(data) > maxLen {
+		return 1, nil, nil
+	}
+
+	if atEOF {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 
 // FromMonitor takes what Home Assistant sent and returns the message to put

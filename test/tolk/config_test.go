@@ -18,6 +18,8 @@ func TestFromEnvDefaultsToThePythonsValues(t *testing.T) {
 		Reconnect:   10 * time.Second,
 		Keepalive:   32 * time.Second,
 		Watchdog:    120 * time.Second,
+
+		StealthTimeout: 10 * time.Second,
 	}
 	if cfg != want {
 		t.Errorf("\n got %+v\nwant %+v", cfg, want)
@@ -31,6 +33,7 @@ func TestFromEnvReadsTheEnvironment(t *testing.T) {
 	t.Setenv("VISONIC_RECONNECT_INTERVAL", "3")
 	t.Setenv("KEEPALIVE_TIMER", "7")
 	t.Setenv("WATCHDOG_TIMEOUT", "90")
+	t.Setenv("STEALTH_MODE_TIMEOUT", "5")
 
 	cfg := tolk.FromEnv()
 
@@ -41,6 +44,8 @@ func TestFromEnvReadsTheEnvironment(t *testing.T) {
 		Reconnect:   3 * time.Second,
 		Keepalive:   7 * time.Second,
 		Watchdog:    90 * time.Second,
+
+		StealthTimeout: 5 * time.Second,
 	}
 	if cfg != want {
 		t.Errorf("\n got %+v\nwant %+v", cfg, want)

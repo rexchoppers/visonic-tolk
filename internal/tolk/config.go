@@ -16,6 +16,7 @@ const (
 	defaultReconnect   = 10 * time.Second
 	defaultKeepalive   = 32 * time.Second
 	defaultWatchdog    = 120 * time.Second
+	defaultStealth     = 10 * time.Second
 )
 
 // FromEnv reads the same names const.py uses, so an addon script that exports
@@ -31,6 +32,8 @@ func FromEnv() Config {
 		Reconnect:   seconds("VISONIC_RECONNECT_INTERVAL", defaultReconnect),
 		Keepalive:   seconds("KEEPALIVE_TIMER", defaultKeepalive),
 		Watchdog:    seconds("WATCHDOG_TIMEOUT", defaultWatchdog),
+
+		StealthTimeout: seconds("STEALTH_MODE_TIMEOUT", defaultStealth),
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rexchoppers/visonic-tolk/internal/conn"
+	"github.com/rexchoppers/visonic-tolk/internal/message"
 	"github.com/rexchoppers/visonic-tolk/internal/powerlink31"
 )
 
@@ -54,7 +55,7 @@ func TestWatchdogLeavesABusyPeerAlone(t *testing.T) {
 func TestNoWatchdogMeansNoDrop(t *testing.T) {
 	near, far := pair(t)
 
-	c := conn.New("monitor", near, conn.SplitRead, discard())
+	c := conn.New("monitor", near, message.Split, discard())
 	run(t, c, nil)
 
 	time.Sleep(200 * time.Millisecond)

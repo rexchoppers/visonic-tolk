@@ -1,10 +1,13 @@
 package tolktest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -67,18 +70,31 @@ func dial(t *testing.T, addr string) net.Conn {
 	return nil
 }
 
+// expect waits for want to show up. Status messages arrive unprompted, so a
+// reader here cannot assume the next bytes are the ones it asked for.
 func expect(t *testing.T, c net.Conn, want []byte) {
 	t.Helper()
 
-	c.SetReadDeadline(time.Now().Add(2 * time.Second))
-	buf := make([]byte, 512)
-	n, err := c.Read(buf)
-	if err != nil {
-		t.Fatalf("read: %v", err)
+	var seen []byte
+	deadline := time.Now().Add(3 * time.Second)
+
+	for time.Now().Before(deadline) {
+		c.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+
+		buf := make([]byte, 1024)
+		n, err := c.Read(buf)
+		if n > 0 {
+			seen = append(seen, buf[:n]...)
+			if bytes.Contains(seen, want) {
+				return
+			}
+		}
+		if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) {
+			break
+		}
 	}
-	if !bytes.Equal(buf[:n], want) {
-		t.Errorf("\n got %q\nwant %q", buf[:n], want)
-	}
+
+	t.Errorf("\nnever saw %q\n      got %q", want, seen)
 }
 
 func start(t *testing.T) (panelAddr, monitorAddr string, cloudConns chan net.Conn) {
@@ -154,23 +170,37 @@ func TestHomeAssistantMessageReachesThePanelAsAFrame(t *testing.T) {
 	body := []byte{0xa2, 0x00, 0x00, 0x08, 0x00, 0x00, 0x43}
 	ha.Write(body)
 
-	pan.SetReadDeadline(time.Now().Add(2 * time.Second))
-	buf := make([]byte, 512)
-	n, err := pan.Read(buf)
-	if err != nil {
-		t.Fatalf("panel read: %v", err)
-	}
-
-	got, err := powerlink31.Decode(buf[:n])
-	if err != nil {
-		t.Fatalf("panel got something undecodable %q: %v", buf[:n], err)
-	}
-	if !bytes.Equal(got.Data, message.Wrap(body)) {
-		t.Errorf("payload = %x, want %x", got.Data, message.Wrap(body))
+	got := waitForFrame(t, pan, func(f powerlink31.Frame) bool {
+		return bytes.Equal(f.Data, message.Wrap(body))
+	})
+	if got == nil {
+		t.Fatal("the panel never got the wrapped message")
 	}
 	if got.Account != account || got.Panel != panelID {
 		t.Errorf("addressed %s/%s, want %s/%s", got.Account, got.Panel, account, panelID)
 	}
+}
+
+// waitForFrame reads frames off the panel side until one matches, since tolk
+// also sends acknowledgements the caller did not ask about.
+func waitForFrame(t *testing.T, c net.Conn, match func(powerlink31.Frame) bool) *powerlink31.Frame {
+	t.Helper()
+
+	c.SetReadDeadline(time.Now().Add(3 * time.Second))
+
+	s := bufio.NewScanner(c)
+	s.Split(powerlink31.SplitFrames)
+
+	for s.Scan() {
+		f, err := powerlink31.Decode(s.Bytes())
+		if err != nil {
+			continue
+		}
+		if match(f) {
+			return &f
+		}
+	}
+	return nil
 }
 
 func TestPanelMessageStillReachesHomeAssistantWithNoCloud(t *testing.T) {

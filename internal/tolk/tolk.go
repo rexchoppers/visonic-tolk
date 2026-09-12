@@ -28,6 +28,10 @@ type Config struct {
 
 	// Watchdog drops a panel or cloud link that has said nothing for this long.
 	Watchdog time.Duration
+
+	// StealthTimeout lets the cloud back if Home Assistant stops asking for
+	// stealth, so a client that disappears mid download cannot strand a panel.
+	StealthTimeout time.Duration
 }
 
 // panel is one alarm panel and the cloud link that belongs to it.
@@ -37,6 +41,10 @@ type panel struct {
 	visonic *conn.Conn
 	account string
 	panelID string
+
+	// stopCloud ends the dial loop, which is how stealth mode keeps the cloud
+	// away rather than dialling and hanging up over and over.
+	stopCloud context.CancelFunc
 }
 
 type Tolk struct {
@@ -48,6 +56,14 @@ type Tolk struct {
 	monitors []*conn.Conn
 	nextID   int
 	nextMsg  int
+	stealth  bool
+	download bool
+
+	stealthUntil *time.Timer
+
+	// base is kept so leaving stealth can start a fresh cloud dial after the
+	// old one was cancelled.
+	base context.Context
 }
 
 func New(cfg Config, log *slog.Logger) *Tolk {
@@ -55,6 +71,10 @@ func New(cfg Config, log *slog.Logger) *Tolk {
 }
 
 func (t *Tolk) Run(ctx context.Context) error {
+	t.mu.Lock()
+	t.base = ctx
+	t.mu.Unlock()
+
 	errs := make(chan error, 2)
 
 	go func() {
@@ -86,6 +106,31 @@ func (t *Tolk) servePanel(ctx context.Context, c net.Conn) {
 	t.mu.Unlock()
 
 	go t.keepalive(ctx, p)
+	t.dialCloud(ctx, p)
+	t.sendStatus()
+
+	p.conn.Run(ctx, func(b []byte) { t.onFrame(route.Panel, p, b) })
+
+	t.mu.Lock()
+	delete(t.panels, p.id)
+	t.mu.Unlock()
+
+	t.log.Info("panel gone", "id", p.id)
+	t.sendStatus()
+}
+
+// dialCloud keeps this panel's cloud link up under a context of its own, so
+// stealth mode can end it without touching the panel connection.
+func (t *Tolk) dialCloud(parent context.Context, p *panel) {
+	if t.inStealth() {
+		return
+	}
+
+	ctx, cancel := context.WithCancel(parent)
+
+	t.mu.Lock()
+	p.stopCloud = cancel
+	t.mu.Unlock()
 
 	go conn.Dial(ctx, t.cfg.VisonicAddr, t.cfg.Reconnect, t.log, func(vc net.Conn) {
 		v := conn.New("visonic", vc, powerlink31.SplitFrames, t.log)
@@ -94,35 +139,33 @@ func (t *Tolk) servePanel(ctx context.Context, c net.Conn) {
 		t.mu.Lock()
 		p.visonic = v
 		t.mu.Unlock()
+		t.sendStatus()
 
 		v.Run(ctx, func(b []byte) { t.onFrame(route.Visonic, p, b) })
 
 		t.mu.Lock()
 		p.visonic = nil
 		t.mu.Unlock()
+		t.sendStatus()
 	})
-
-	p.conn.Run(ctx, func(b []byte) { t.onFrame(route.Panel, p, b) })
-
-	t.mu.Lock()
-	delete(t.panels, p.id)
-	t.mu.Unlock()
-	t.log.Info("panel gone", "id", p.id)
 }
 
 func (t *Tolk) serveMonitor(ctx context.Context, c net.Conn) {
-	m := conn.New("monitor", c, conn.SplitRead, t.log)
+	m := conn.New("monitor", c, message.Split, t.log)
 
 	t.mu.Lock()
 	t.monitors = append(t.monitors, m)
 	t.mu.Unlock()
+	t.sendStatus()
 
 	m.Run(ctx, func(b []byte) { t.onMonitor(b) })
 
 	t.mu.Lock()
 	t.monitors = remove(t.monitors, m)
 	t.mu.Unlock()
+
 	t.log.Info("monitor gone")
+	t.sendStatus()
 }
 
 // keepalive pokes a quiet panel, but only while its cloud link is down. With
@@ -181,6 +224,15 @@ func (t *Tolk) onMonitor(raw []byte) {
 		return
 	}
 
+	t.noteDownload(data)
+
+	// An action is addressed to tolk, so it is answered whether or not a panel
+	// is connected. Everything else needs somewhere to go.
+	if message.Class(data) == message.ClassAction {
+		t.action(powerlink31.Frame{Data: data})
+		return
+	}
+
 	p := t.firstPanel()
 	if p == nil {
 		t.log.Warn("no panel connected, dropping", "bytes", raw)
@@ -223,7 +275,7 @@ func (t *Tolk) apply(from route.Peer, p *panel, f powerlink31.Frame, plan route.
 	}
 
 	if plan.Local {
-		t.log.Info("action from home assistant is not handled yet", "data", f.Data)
+		t.action(f)
 	}
 
 	if plan.Drop {

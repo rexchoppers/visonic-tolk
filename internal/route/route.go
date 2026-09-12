@@ -17,10 +17,6 @@ const (
 	Monitor Peer = "monitor"
 )
 
-// action is the message class Home Assistant uses to ask tolk to do something
-// rather than to pass something on.
-const action = 0xe1
-
 // State is what the decision depends on beyond the frame itself.
 type State struct {
 	MonitorConnected bool
@@ -88,7 +84,7 @@ func fromVisonic(f powerlink31.Frame) Plan {
 }
 
 func fromMonitor(f powerlink31.Frame) Plan {
-	if message.Class(f.Data) == action {
+	if message.Class(f.Data) == message.ClassAction {
 		return Plan{Local: true, AckBack: true}
 	}
 	return Plan{Send: []Send{to(Panel, f)}}

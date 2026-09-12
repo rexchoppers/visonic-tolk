@@ -62,18 +62,6 @@ func Dial(ctx context.Context, addr string, retry time.Duration, log *slog.Logge
 	}
 }
 
-// SplitRead hands back whatever has arrived, as one token.
-//
-// Home Assistant exchanges bare panel messages, which carry no length and can
-// hold 0x0a inside the body, so there is nothing to find a boundary with. The
-// python relies on one read being one message and so does this.
-func SplitRead(data []byte, atEOF bool) (int, []byte, error) {
-	if len(data) == 0 {
-		return 0, nil, nil
-	}
-	return len(data), data, nil
-}
-
 func wait(ctx context.Context, d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
