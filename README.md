@@ -75,6 +75,65 @@ stop this and start the original again.
 The certificate for port 8443 is generated on first start and kept in
 `/data/certs`.
 
+## Configuring Visonic Alarm To Work With Visonic Tolk
+
+These instructions are from the original project's README.
+
+This app works as a proxy to a PowerManage server and requires you to have a
+PowerLink 3.1 module installed and configured to a monitor service.
+
+In order to use this app, you need to tell your alarm to connect to it instead
+of the PowerManage server directly and then block access to the PowerManage
+server for your alarm on your network.
+
+### Configure via the Alarm Install app
+
+Log into your panel using the app.
+Select the Powerlink module and the configuration tab.
+In the Central Station Reporting section set the below settings:
+
+- **Report Events to Central Station** - all *backup
+- **Receiver 2 IP** - [IP of your homeassistant server running this app]
+
+### Configure via the Panel
+
+Go into Installer Mode on your panel. You will need to use the Master Installer
+code (not the normal installer code). This is default 9999, whereas the default
+installer code is 8888. However, this may (should) have been changed by you or
+your installer.
+
+* Select Communication (option 04)
+* Select C.S Reporting (option 03)
+* Select Report Events (option 01)
+* Change to all *backup
+* Go back up to the C.S Reporting menu
+* Select IP RCVR 2 (option 22)
+* Enter the IP of your homeassistant server running this app
+* Exit Installer Mode.
+
+NOTE: It is **not** recommended to remove the setting in Receiver IP 1 as this
+will allow you to still connect to the PowerManage monitor server directly in
+case of issues.
+
+### Blocking Panel Access
+
+In order for the panel to connect to this app, you will need to stop it being
+able to connect to the PowerManage server.
+
+There are many ways to block access for your panel to the PowerManage server
+depending on your network equipment. Parental controls blocking internet access
+for the alarm panel will do it, as will port blocking (Network Services Filter)
+on a firewall. You need, as a minimum, to block ports 5001 and 8442 from the
+panel to the internet.
+
+#### Notes
+
+* Depending on your equipment, you may need to disconnect your alarm ethernet
+  cable for 30s and reconnect it in order for it to connect to the app the first
+  time. You can see in the logs if the alarm has connected.
+* Do not block access for your HA instance to the PowerManage server, as the app
+  connects to that.
+
 ## Options
 
 | Option | Default |
@@ -98,40 +157,9 @@ Setting `log_level` to `debug` logs every frame in and out as spaced hex, which
 can be compared directly against the original's log. Anything the proxy does not
 understand is logged with the word `unsupported`.
 
-## When it does not work
-
-Set `log_level` to `debug` and look for these, in this order. Whichever one is
-missing is where it stopped.
-
-| Log line | Means |
-|---|---|
-| `web listening addr=:8443` | The check-in server started |
-| `telling the panel to connect` | The panel checked in and was answered |
-| `accepted addr=:5001` | The panel took the instruction and connected |
-| `rx from=panel` | The panel is talking |
-| `connected addr=...:5001` | The cloud link is up |
-
-If the panel never reaches 8443, check that nothing else is bound to the port
-and that the original proxy is stopped.
-
-If `entering stealth` appears repeatedly, the cloud link is being dropped on
-purpose while Home Assistant reads the panel, and it will come back on its own.
-
-Anything the proxy does not understand is logged with the word `unsupported`,
-so one grep finds all of it.
-
-## Status
-
-This is early software. It runs against a single panel, mine, and has not been
-tried on anyone else's setup. If something breaks, the log at debug level will
-usually show which frame caused it.
-
 ## Credit
 
-The protocol work is Mark Parker's. He reverse engineered the PowerLink 3.1
-framing, the checksums, and the web check-in rewrite that makes the panel
-connect in the first place, none of which was documented anywhere. If you want
-the proven and more complete version, use
-[his](https://github.com/msp1974/visonic_proxy).
+A port of Mark Parker's
+[visonic_proxy](https://github.com/msp1974/visonic_proxy).
 
 Not affiliated with Visonic.
