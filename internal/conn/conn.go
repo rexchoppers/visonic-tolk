@@ -15,6 +15,7 @@ import (
 	"context"
 	"log/slog"
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -22,16 +23,25 @@ import (
 // message anyway.
 const AckTimeout = 5 * time.Second
 
+// WatchdogTick is how often a peer is checked for silence, matching the
+// python's fifteen seconds. The timeout itself is per connection.
+const WatchdogTick = 15 * time.Second
+
 type Conn struct {
 	// AckWait is how long this peer holds its gate. Defaults to AckTimeout.
 	AckWait time.Duration
 
-	name  string
-	net   net.Conn
-	split bufio.SplitFunc
-	out   chan outbound
-	ack   chan struct{}
-	log   *slog.Logger
+	// Watchdog drops the connection after this long with nothing received.
+	// Zero leaves it running forever, which is what Home Assistant gets.
+	Watchdog time.Duration
+
+	name   string
+	net    net.Conn
+	split  bufio.SplitFunc
+	out    chan outbound
+	ack    chan struct{}
+	log    *slog.Logger
+	lastRx atomic.Int64
 }
 
 type outbound struct {
@@ -84,14 +94,47 @@ func (c *Conn) Run(ctx context.Context, onFrame func([]byte)) error {
 
 	go c.send(ctx)
 
+	c.lastRx.Store(time.Now().UnixNano())
+	if c.Watchdog > 0 {
+		go c.watch(ctx)
+	}
+
 	s := bufio.NewScanner(c.net)
 	s.Split(c.split)
 
 	for s.Scan() {
+		c.lastRx.Store(time.Now().UnixNano())
 		onFrame(bytes.Clone(s.Bytes()))
 	}
 
 	return s.Err()
+}
+
+// Idle is how long since anything was received.
+func (c *Conn) Idle() time.Duration {
+	return time.Since(time.Unix(0, c.lastRx.Load()))
+}
+
+// watch drops a peer that has gone quiet. A dead socket often does not report
+// itself, so silence is the only signal there is.
+func (c *Conn) watch(ctx context.Context) {
+	tick := min(WatchdogTick, c.Watchdog/2)
+
+	t := time.NewTicker(tick)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if c.Idle() > c.Watchdog {
+				c.log.Info("dropping quiet peer", "conn", c.name, "idle", c.Idle())
+				c.Close()
+				return
+			}
+		}
+	}
 }
 
 func (c *Conn) send(ctx context.Context) {

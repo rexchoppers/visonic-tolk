@@ -20,6 +20,14 @@ type Config struct {
 	MonitorAddr string
 	VisonicAddr string
 	Reconnect   time.Duration
+
+	// Keepalive is how quiet the panel may go before tolk pokes it. Only used
+	// while the cloud is down, because otherwise the cloud's own traffic keeps
+	// the panel busy.
+	Keepalive time.Duration
+
+	// Watchdog drops a panel or cloud link that has said nothing for this long.
+	Watchdog time.Duration
 }
 
 // panel is one alarm panel and the cloud link that belongs to it.
@@ -68,14 +76,20 @@ func (t *Tolk) servePanel(ctx context.Context, c net.Conn) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	pc := conn.New("panel", c, powerlink31.SplitFrames, t.log)
+	pc.Watchdog = t.cfg.Watchdog
+
 	t.mu.Lock()
 	t.nextID++
-	p := &panel{id: t.nextID, conn: conn.New("panel", c, powerlink31.SplitFrames, t.log)}
+	p := &panel{id: t.nextID, conn: pc}
 	t.panels[p.id] = p
 	t.mu.Unlock()
 
+	go t.keepalive(ctx, p)
+
 	go conn.Dial(ctx, t.cfg.VisonicAddr, t.cfg.Reconnect, t.log, func(vc net.Conn) {
 		v := conn.New("visonic", vc, powerlink31.SplitFrames, t.log)
+		v.Watchdog = t.cfg.Watchdog
 
 		t.mu.Lock()
 		p.visonic = v
@@ -109,6 +123,38 @@ func (t *Tolk) serveMonitor(ctx context.Context, c net.Conn) {
 	t.monitors = remove(t.monitors, m)
 	t.mu.Unlock()
 	t.log.Info("monitor gone")
+}
+
+// keepalive pokes a quiet panel, but only while its cloud link is down. With
+// the cloud connected the panel is already being talked to, and the python
+// only runs this in the same circumstance.
+func (t *Tolk) keepalive(ctx context.Context, p *panel) {
+	if t.cfg.Keepalive <= 0 {
+		return
+	}
+
+	tick := time.NewTicker(t.cfg.Keepalive / 4)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			if t.visonicOf(p) != nil || p.conn.Idle() < t.cfg.Keepalive {
+				continue
+			}
+
+			t.log.Debug("poking a quiet panel", "id", p.id, "idle", p.conn.Idle())
+			p.conn.Send(powerlink31.Frame{
+				Type:    powerlink31.TypeBBA,
+				MsgID:   t.msgID(),
+				Account: p.account,
+				Panel:   p.panelID,
+				Data:    message.Keepalive,
+			}.Encode(), false)
+		}
+	}
 }
 
 // onFrame handles a whole powerlink31 frame from a panel or its cloud link.
