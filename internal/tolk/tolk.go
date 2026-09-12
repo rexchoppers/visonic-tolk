@@ -4,8 +4,10 @@ package tolk
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -216,6 +218,14 @@ func (t *Tolk) onFrame(from route.Peer, src *conn.Conn, p *panel, raw []byte) {
 	// up the reply.
 	src.Ack()
 
+	t.log.Debug("rx",
+		"from", from,
+		"type", f.Type,
+		"id", f.MsgID,
+		"class", fmt.Sprintf("%02x", message.Class(f.Data)),
+		"data", asHex(f.Data),
+	)
+
 	if from == route.Panel {
 		t.remember(p, f)
 	}
@@ -228,9 +238,16 @@ func (t *Tolk) onFrame(from route.Peer, src *conn.Conn, p *panel, raw []byte) {
 func (t *Tolk) onMonitor(src *conn.Conn, raw []byte) {
 	data, isAck, err := message.FromMonitor(raw)
 	if err != nil {
-		t.log.Warn("unusable message from home assistant", "err", err, "bytes", raw)
+		t.log.Warn("unsupported from home assistant", "err", err, "data", asHex(raw))
 		return
 	}
+
+	t.log.Debug("rx",
+		"from", route.Monitor,
+		"class", fmt.Sprintf("%02x", message.Class(data)),
+		"ack", isAck,
+		"data", asHex(data),
+	)
 
 	if isAck {
 		src.Ack()
@@ -270,6 +287,14 @@ func (t *Tolk) onMonitor(src *conn.Conn, raw []byte) {
 
 func (t *Tolk) apply(from route.Peer, p *panel, f powerlink31.Frame, plan route.Plan) {
 	for _, s := range plan.Send {
+		t.log.Debug("tx",
+			"to", s.To,
+			"type", f.Type,
+			"id", f.MsgID,
+			"waits", s.WantAck,
+			"data", asHex(f.Data),
+		)
+
 		switch s.To {
 		case route.Monitor:
 			t.toMonitors(f.Data)
@@ -382,6 +407,19 @@ func (t *Tolk) msgID() int {
 		t.nextMsg = 1
 	}
 	return t.nextMsg
+}
+
+// asHex renders bytes the way the python logs them, spaced, so a line here can
+// be put beside a line from the old app.
+func asHex(b []byte) string {
+	var s strings.Builder
+	for i, x := range b {
+		if i > 0 {
+			s.WriteByte(' ')
+		}
+		fmt.Fprintf(&s, "%02x", x)
+	}
+	return s.String()
 }
 
 func remove(cs []*conn.Conn, c *conn.Conn) []*conn.Conn {

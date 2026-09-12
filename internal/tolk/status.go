@@ -48,7 +48,7 @@ func (t *Tolk) action(f powerlink31.Frame) {
 	case 0x02:
 		t.setStealth(value == 0x01)
 	default:
-		t.log.Warn("unknown action", "command", command, "value", value)
+		t.log.Warn("unsupported action", "command", command, "value", value, "data", asHex(f.Data))
 	}
 }
 
