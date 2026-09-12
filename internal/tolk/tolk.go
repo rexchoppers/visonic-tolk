@@ -251,6 +251,7 @@ func (t *Tolk) onFrame(from route.Peer, src *conn.Conn, p *panel, raw []byte) {
 
 	if from == route.Panel {
 		t.remember(p, f)
+		t.notePanelDownload(f.Data)
 	}
 
 	t.apply(from, p, f, route.Route(from, f, t.state(p)))

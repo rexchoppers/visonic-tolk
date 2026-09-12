@@ -70,6 +70,66 @@ func (t *Tolk) noteDownload(data []byte) {
 	}
 }
 
+// The two message classes the panel uses to say it has entered or left
+// download mode directly, rather than inside a b0.
+const (
+	enteredDownload = 0x3c
+	leftDownload    = 0x0f
+)
+
+// notePanelDownload keeps the download flag honest by watching the panel, not
+// only Home Assistant's requests. The panel enters and leaves download mode on
+// its own, and Home Assistant reads that flag out of the status.
+func (t *Tolk) notePanelDownload(data []byte) {
+	on, known := panelDownloading(data)
+	if !known {
+		return
+	}
+
+	t.mu.Lock()
+	changed := t.download != on
+	t.download = on
+	t.mu.Unlock()
+
+	if changed {
+		t.log.Info("panel download mode", "on", on)
+		t.sendStatus()
+	}
+}
+
+// panelDownloading reads download mode out of a panel message, and says
+// whether the message carried the answer at all.
+//
+// The offsets are fixed and come from the python's basic decoder: a b0 0f puts
+// panel state at byte 13, a b0 24 puts it at byte 26, and state 7 is download.
+func panelDownloading(data []byte) (on bool, known bool) {
+	switch message.Class(data) {
+	case enteredDownload:
+		return true, true
+	case leftDownload:
+		return false, true
+	case message.ClassPanel:
+		if len(data) < 4 {
+			return false, false
+		}
+
+		switch data[3] {
+		case 0x0f:
+			if len(data) < 14 {
+				return false, false
+			}
+			return data[13] == 7, true
+		case 0x24:
+			if len(data) < 27 {
+				return false, false
+			}
+			return data[26] == 7, true
+		}
+	}
+
+	return false, false
+}
+
 func (t *Tolk) inStealth() bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
