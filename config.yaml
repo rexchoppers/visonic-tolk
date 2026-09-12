@@ -1,6 +1,6 @@
 name: "Visonic Tolk"
 description: "Proxy between Visonic Panels, Cloud and HA"
-version: "0.1.4"
+version: "0.1.5"
 slug: "visonic_tolk"
 url: https://github.com/rexchoppers/visonic-tolk
 init: false

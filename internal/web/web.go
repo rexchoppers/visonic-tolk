@@ -43,14 +43,18 @@ func New(cfg Config, log *slog.Logger) *Server {
 	return &Server{
 		cfg: cfg,
 		log: log,
+		// No overall deadline on the client. The python's two seconds is a
+		// connect and between-reads timeout, while Go's would cap the whole
+		// exchange, which cuts off camera uploads part way. The limits that
+		// matter are set per stage below, and per request in forward.
 		up: &http.Client{
-			// Two seconds, as the python uses. The panel is waiting on this
-			// reply, so a slow cloud must not hold up the connect command.
-			Timeout: 2 * time.Second,
 			Transport: &http.Transport{
 				// Visonic presents a certificate nothing here can verify, and
 				// the python does the same.
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+				TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+				DialContext:           (&net.Dialer{Timeout: 2 * time.Second}).DialContext,
+				TLSHandshakeTimeout:   2 * time.Second,
+				ResponseHeaderTimeout: 5 * time.Second,
 			},
 		},
 	}
@@ -100,34 +104,52 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 
 	res, err := s.forward(r, body)
 	if err != nil {
-		// Visonic is unreachable, so answer on its behalf. The panel still has
-		// to be told to connect, or it will sit there forever.
-		s.log.Warn("visonic unreachable, answering alone", "path", r.URL.Path, "err", err)
+		// Only the check-in is answered alone, because the panel has to be told
+		// to connect or it sits there forever. Anything else, a camera upload
+		// above all, is left to the panel to retry rather than being handed a
+		// reply meant for a different request.
+		if r.URL.Path != updatePath {
+			s.log.Warn("visonic unreachable", "path", r.URL.Path, "err", err)
+			http.Error(w, "", http.StatusBadGateway)
+			return
+		}
+
+		s.log.Warn("visonic unreachable, telling the panel to connect anyway", "err", err)
 		s.write(w, http.StatusOK, nil, s.connectCommand(nil))
 		return
 	}
-	defer res.Body.Close()
-
-	upstream, err := io.ReadAll(res.Body)
-	if err != nil {
-		http.Error(w, "", http.StatusBadGateway)
-		return
-	}
-
-	out := upstream
+	out := res.body
 	if r.URL.Path == updatePath {
-		out = s.connectCommand(upstream)
+		out = s.connectCommand(res.body)
 	}
 
 	if r.URL.Path == filmPath {
-		s.log.Debug("camera still passed through", "bytes", len(body))
+		s.log.Info("camera still forwarded", "sent", len(body), "answer", res.status)
 	}
 
-	s.write(w, res.StatusCode, res.Header, out)
+	s.write(w, res.status, res.headers, out)
 }
 
-func (s *Server) forward(r *http.Request, body []byte) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, s.cfg.Upstream+r.URL.Path, bytes.NewReader(body))
+// reply is the upstream answer, read out in full so the request context can be
+// released before the caller uses it.
+type reply struct {
+	status  int
+	headers http.Header
+	body    []byte
+}
+
+func (s *Server) forward(r *http.Request, body []byte) (*reply, error) {
+	// The panel waits on the check-in, so it gets a short deadline. A camera
+	// upload is large and gets room to finish.
+	wait := 30 * time.Second
+	if r.URL.Path == updatePath {
+		wait = 2 * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), wait)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, r.Method, s.cfg.Upstream+r.URL.Path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +161,18 @@ func (s *Server) forward(r *http.Request, body []byte) (*http.Response, error) {
 		}
 	}
 
-	return s.up.Do(req)
+	res, err := s.up.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	out, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return &reply{status: res.StatusCode, headers: res.Header, body: out}, nil
 }
 
 // connectCommand rewrites Visonic's answer so it carries the instruction that
