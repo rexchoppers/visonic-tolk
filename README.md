@@ -8,6 +8,29 @@ Visonic PowerMaster panel, Visonic's servers and Home Assistant.
 
 The original has had no commits since May 2025.
 
+## How it works
+
+The panel opens its own connections, so the proxy cannot simply reach out and
+talk to it. Everything hangs off that.
+
+```
+                    +-------+
+panel  --- 5001 --> |       | ---> Visonic
+       --- 8443 --> | tolk  | ---> Visonic
+                    |       | <--- Home Assistant on 5002
+                    +-------+
+```
+
+The panel checks in over HTTPS on 8443 every few seconds. tolk forwards that
+check-in to Visonic, then adds a command to the reply telling the panel to open
+a message connection on 5001. That injected command is the whole trick, and
+without it the panel talks only to Visonic and never appears.
+
+Once the message connection is up, frames from the panel are sent to both
+Visonic and Home Assistant, and messages from either are sent to the panel.
+Home Assistant is given the message inside the frame rather than the frame
+itself, because that is what it expects.
+
 ## Features
 
 - Each connection has its own acknowledgement gate, so a quiet panel does not
@@ -26,7 +49,7 @@ The original has had no commits since May 2025.
 
 | | |
 |---|---|
-| Visonic's cloud servers | Untested. The connection opens, but nothing beyond that has been verified |
+| Configuration download from the Visonic app | Does not complete. It behaved the same way on the original, so it is not something the rewrite introduced |
 | Websocket mode | Socket mode only, as used by [davesmeghead/visonic](https://github.com/davesmeghead/visonic) |
 | B0 shorthand | Refused and logged rather than guessed at |
 | Command replay on reconnect | Visonic asks again on its own |
@@ -74,6 +97,28 @@ unknown.
 Setting `log_level` to `debug` logs every frame in and out as spaced hex, which
 can be compared directly against the original's log. Anything the proxy does not
 understand is logged with the word `unsupported`.
+
+## When it does not work
+
+Set `log_level` to `debug` and look for these, in this order. Whichever one is
+missing is where it stopped.
+
+| Log line | Means |
+|---|---|
+| `web listening addr=:8443` | The check-in server started |
+| `telling the panel to connect` | The panel checked in and was answered |
+| `accepted addr=:5001` | The panel took the instruction and connected |
+| `rx from=panel` | The panel is talking |
+| `connected addr=...:5001` | The cloud link is up |
+
+If the panel never reaches 8443, check that nothing else is bound to the port
+and that the original proxy is stopped.
+
+If `entering stealth` appears repeatedly, the cloud link is being dropped on
+purpose while Home Assistant reads the panel, and it will come back on its own.
+
+Anything the proxy does not understand is logged with the word `unsupported`,
+so one grep finds all of it.
 
 ## Status
 
