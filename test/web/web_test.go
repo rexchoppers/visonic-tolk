@@ -28,8 +28,14 @@ func freeAddr(t *testing.T) string {
 	return addr
 }
 
-// serve starts the web side against a stand-in for Visonic.
+// serve starts the web side against a stand-in for Visonic, with no panel
+// connected.
 func serve(t *testing.T, upstream string) string {
+	t.Helper()
+	return serveWith(t, upstream, false)
+}
+
+func serveWith(t *testing.T, upstream string, connected bool) string {
 	t.Helper()
 
 	addr := freeAddr(t)
@@ -42,6 +48,7 @@ func serve(t *testing.T, upstream string) string {
 		Upstream:    upstream,
 		ConnectPort: "5001",
 		CertDir:     t.TempDir(),
+		Connected:   func() bool { return connected },
 	}, slog.New(slog.DiscardHandler)).Serve(ctx)
 
 	return addr
@@ -128,6 +135,38 @@ func TestThePanelIsStillToldToConnectWithVisonicDown(t *testing.T) {
 
 	if !strings.Contains(string(body), `"connect"`) {
 		t.Errorf("no connect command with visonic unreachable: %q", body)
+	}
+}
+
+// The python only asks a panel to connect while it has no connection. Asking
+// one that is already connected was followed by the panel ending its session
+// and Visonic hanging up, and the injected reply hid Visonic's own commands.
+func TestAConnectedPanelGetsVisonicsCheckInReplyUntouched(t *testing.T) {
+	const reply = `{"ka_time":5,"cmds":[{"name":"getConfig"}]}`
+
+	visonic := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(reply))
+	}))
+	defer visonic.Close()
+
+	_, body := post(t, serveWith(t, visonic.URL, true), "/scripts/update.php", "{}")
+
+	if string(body) != reply {
+		t.Errorf("got %q, want visonic's reply %q", body, reply)
+	}
+}
+
+func TestAConnectedPanelIsNotToldToConnectWithVisonicDown(t *testing.T) {
+	status, body := post(t, serveWith(t, "https://192.0.2.1:8443", true), "/scripts/update.php", "{}")
+
+	if status != http.StatusOK {
+		t.Fatalf("status %d, want 200", status)
+	}
+	if strings.Contains(string(body), `"connect"`) {
+		t.Errorf("connected panel told to connect again: %q", body)
+	}
+	if !strings.Contains(string(body), `"ka_time":10`) {
+		t.Errorf("reply carried no ka_time: %q", body)
 	}
 }
 

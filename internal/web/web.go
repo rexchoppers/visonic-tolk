@@ -32,10 +32,15 @@ type Config struct {
 	ConnectPort string // the port the panel is told to open, 5001
 	CertDir     string // where the self signed certificate is kept
 
-	// KaTime is the seconds the panel is told to wait between check-ins. Ten
-	// is what the python sends. Whether it paces anything else the panel does
-	// is unknown, so it is exposed to be experimented with.
+	// KaTime is the seconds the panel is told to wait between check-ins, in
+	// the replies tolk writes itself. Ten is what the python sends. Whether it
+	// paces anything else the panel does is unknown, so it is exposed to be
+	// experimented with.
 	KaTime int
+
+	// Connected reports whether a panel already has its message connection
+	// open. Only a panel that does not is told to connect, as the python does.
+	Connected func() bool
 }
 
 type Server struct {
@@ -123,13 +128,17 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		s.log.Warn("visonic unreachable, telling the panel to connect anyway", "err", err)
-		s.write(w, http.StatusOK, nil, s.connectCommand(nil))
+		s.log.Warn("visonic unreachable, answering the check-in here", "err", err)
+		s.write(w, http.StatusOK, nil, s.answer(nil, !s.connected()))
 		return
 	}
 	out := res.body
 	if r.URL.Path == updatePath {
-		out = s.connectCommand(res.body)
+		if s.connected() {
+			s.log.Debug("check-in answered by visonic", "reply", string(res.body))
+		} else {
+			out = s.answer(res.body, true)
+		}
 	}
 
 	if r.URL.Path == filmPath {
@@ -184,9 +193,16 @@ func (s *Server) forward(r *http.Request, body []byte) (*reply, error) {
 	return &reply{status: res.StatusCode, headers: res.Header, body: out}, nil
 }
 
-// connectCommand rewrites Visonic's answer so it carries the instruction that
-// makes the panel open its message connection to tolk.
-func (s *Server) connectCommand(upstream []byte) []byte {
+// connected reports whether a panel already has its message connection open.
+// A connected panel is left with Visonic's own reply, so a command Visonic
+// sends over the check-in still reaches it.
+func (s *Server) connected() bool {
+	return s.cfg.Connected != nil && s.cfg.Connected()
+}
+
+// answer rewrites Visonic's reply as tolk's own, adding the instruction that
+// makes the panel open its message connection to tolk when connect is set.
+func (s *Server) answer(upstream []byte, connect bool) []byte {
 	out := map[string]any{}
 	if len(upstream) > 0 {
 		if err := json.Unmarshal(upstream, &out); err != nil {
@@ -195,10 +211,12 @@ func (s *Server) connectCommand(upstream []byte) []byte {
 		}
 	}
 
-	out["cmds"] = []map[string]any{{
-		"name":   "connect",
-		"params": map[string]any{"port": port(s.cfg.ConnectPort)},
-	}}
+	if connect {
+		out["cmds"] = []map[string]any{{
+			"name":   "connect",
+			"params": map[string]any{"port": port(s.cfg.ConnectPort)},
+		}}
+	}
 	out["ka_time"] = s.cfg.KaTime
 	out["version"] = 3
 
@@ -207,7 +225,9 @@ func (s *Server) connectCommand(upstream []byte) []byte {
 		return upstream
 	}
 
-	s.log.Info("telling the panel to connect", "port", s.cfg.ConnectPort)
+	if connect {
+		s.log.Info("telling the panel to connect", "port", s.cfg.ConnectPort)
+	}
 	return append(b, '\n')
 }
 

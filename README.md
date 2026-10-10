@@ -22,9 +22,11 @@ panel  --- 5001 --> |       | ---> Visonic
 ```
 
 The panel checks in over HTTPS on 8443 every few seconds. tolk forwards that
-check-in to Visonic, then adds a command to the reply telling the panel to open
-a message connection on 5001. That injected command is the whole trick, and
-without it the panel talks only to Visonic and never appears.
+check-in to Visonic and, while the panel has no message connection, adds a
+command to the reply telling it to open one on 5001. That injected command is
+the whole trick, and without it the panel talks only to Visonic and never
+appears. Once the panel is connected, Visonic's reply is passed through
+untouched, as the original does.
 
 Once the message connection is up, frames from the panel are sent to both
 Visonic and Home Assistant, and messages from either are sent to the panel.
@@ -149,9 +151,10 @@ panel to the internet.
 | `ka_time` | `10` |
 | `log_level` | `info` |
 
-`ka_time` is how many seconds the panel is told to leave between check-ins. Ten
-is what the original sends. Whether it paces anything else the panel does is
-unknown.
+`ka_time` is how many seconds the panel is told to leave between check-ins,
+in the replies tolk writes itself. Once the panel is connected it gets
+Visonic's own value instead. Ten is what the original sends. Whether it paces
+anything else the panel does is unknown.
 
 Setting `log_level` to `debug` logs every frame in and out as spaced hex, which
 can be compared directly against the original's log. Anything the proxy does not

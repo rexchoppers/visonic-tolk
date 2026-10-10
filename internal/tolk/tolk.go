@@ -109,6 +109,7 @@ func (t *Tolk) Run(ctx context.Context) error {
 				ConnectPort: portOf(t.cfg.PanelAddr),
 				CertDir:     t.cfg.CertDir,
 				KaTime:      t.cfg.KaTime,
+				Connected:   t.panelUp,
 			}, t.log).Serve(ctx)
 		}()
 	}
@@ -401,6 +402,13 @@ func (t *Tolk) state(p *panel) route.State {
 		MonitorConnected: len(t.monitors) > 0,
 		VisonicConnected: p.visonic != nil,
 	}
+}
+
+// panelUp reports whether any panel has its message connection open.
+func (t *Tolk) panelUp() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return len(t.panels) > 0
 }
 
 func (t *Tolk) visonicOf(p *panel) *conn.Conn {
