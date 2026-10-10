@@ -53,7 +53,6 @@ itself, because that is what it expects.
 
 | | |
 |---|---|
-| Configuration download from the Visonic app | Does not complete. It behaved the same way on the original, so it is not something the rewrite introduced |
 | Websocket mode | Socket mode only, as used by [davesmeghead/visonic](https://github.com/davesmeghead/visonic) |
 | B0 shorthand | Refused and logged rather than guessed at |
 

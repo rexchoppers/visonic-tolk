@@ -15,6 +15,9 @@
   original does. Anything the panel announced in a `b0 51` while the link was
   down is asked for too. The first link after starting is left alone, and the
   panel's acknowledgement of the request is kept from Visonic.
+- Configuration download from the Alarm Install app now completes. It never
+  did before, on this or the original, most likely because the connect sent
+  on every check-in kept cutting the panel's cloud session short.
 
 ## 0.1.6
 
