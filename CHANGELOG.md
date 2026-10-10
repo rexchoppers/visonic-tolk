@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.7
+
+- The panel is told to connect only while it has no message connection, as
+  the original does. It used to be told on every check-in, and a panel already
+  connected was seen to answer by ending its session, after which Visonic hung
+  up the cloud link.
+- Once the panel is connected, Visonic's check-in reply reaches it untouched,
+  so commands Visonic sends that way are no longer replaced.
+- Visonic's request to disconnect is now acknowledged before the cloud link
+  closes. The close raced the acknowledgement, which was lost and logged as
+  `write failed`.
+- When the cloud link comes back, the panel is asked for its state, as the
+  original does. Anything the panel announced in a `b0 51` while the link was
+  down is asked for too. The first link after starting is left alone, and the
+  panel's acknowledgement of the request is kept from Visonic.
+
 ## 0.1.6
 
 - The panel check-in interval is now an option, `ka_time`. It defaults to 10,
