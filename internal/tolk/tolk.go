@@ -59,6 +59,11 @@ type panel struct {
 	account string
 	panelID string
 
+	// asks is what the panel announced while its cloud link was down, and
+	// initID the greeting still waiting on the panel's ack.
+	asks   []byte
+	initID int
+
 	// stopCloud ends the dial loop, which is how stealth mode keeps the cloud
 	// away rather than dialling and hanging up over and over.
 	stopCloud context.CancelFunc
@@ -75,6 +80,10 @@ type Tolk struct {
 	nextMsg  int
 	stealth  bool
 	download bool
+
+	// cloudSeen is set once a cloud link has been up, or stealth has ended.
+	// Only after that is a new link greeted.
+	cloudSeen bool
 
 	stealthUntil *time.Timer
 
@@ -170,6 +179,7 @@ func (t *Tolk) dialCloud(parent context.Context, p *panel) {
 		p.visonic = v
 		t.mu.Unlock()
 		t.sendStatus()
+		t.greet(p)
 
 		v.Run(ctx, func(b []byte) { t.onFrame(route.Visonic, v, p, b) })
 
@@ -257,6 +267,11 @@ func (t *Tolk) onFrame(from route.Peer, src *conn.Conn, p *panel, raw []byte) {
 	if from == route.Panel {
 		t.remember(p, f)
 		t.notePanelDownload(f.Data)
+		t.noteAsks(p, f.Data)
+
+		if t.ownAck(p, f) {
+			return
+		}
 	}
 
 	t.apply(from, p, f, route.Route(from, f, t.state(p)))

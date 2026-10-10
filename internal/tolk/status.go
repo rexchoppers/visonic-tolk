@@ -142,6 +142,9 @@ func (t *Tolk) setStealth(on bool) {
 	t.mu.Lock()
 	changed := t.stealth != on
 	t.stealth = on
+	if changed && !on {
+		t.cloudSeen = true
+	}
 	base := t.base
 	ps := make([]*panel, 0, len(t.panels))
 	for _, p := range t.panels {

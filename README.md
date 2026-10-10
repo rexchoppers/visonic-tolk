@@ -41,6 +41,8 @@ itself, because that is what it expects.
   are separated by validating their checksums.
 - Stealth mode drops the cloud link while Home Assistant reads the panel's
   EPROM, and restores it afterwards.
+- When the cloud link comes back, the panel is asked for its state and for
+  anything it announced while the link was down, so Visonic catches up.
 - The HTTPS certificate the panel needs is generated on first start.
 - Every frame can be logged in and out as spaced hex for debugging.
 - A 2.7 MB static binary with no interpreter and no dependencies.
@@ -54,7 +56,6 @@ itself, because that is what it expects.
 | Configuration download from the Visonic app | Does not complete. It behaved the same way on the original, so it is not something the rewrite introduced |
 | Websocket mode | Socket mode only, as used by [davesmeghead/visonic](https://github.com/davesmeghead/visonic) |
 | B0 shorthand | Refused and logged rather than guessed at |
-| Command replay on reconnect | Visonic asks again on its own |
 
 ## Installing
 

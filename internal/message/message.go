@@ -33,6 +33,41 @@ func Status(panels, visonic, monitors int, proxy, stealth, download bool) []byte
 	})
 }
 
+// Init asks the panel for its 51 list and for whatever else is in asks, or for
+// 0f when asks is empty. tolk sends it when a cloud link comes back, so Visonic
+// starts with the panel's state rather than silence.
+//
+//	in:  18 24
+//	out: 0d b0 01 17 09 01 ff 08 ff 03 51 18 24 00 43 51 0a
+func Init(asks []byte) []byte {
+	if len(asks) == 0 {
+		asks = []byte{0x0f}
+	}
+
+	n := byte(len(asks) + 1)
+	body := []byte{0xb0, 0x01, 0x17, 6 + n, 0x01, 0xff, 0x08, 0xff, n, 0x51}
+	body = append(body, asks...)
+	body = append(body, 0x00, 0x43)
+	return Wrap(body)
+}
+
+// Asks reads the list of commands out of a b0 51, the panel saying what it
+// has to tell. Nil for any other message.
+//
+//	in:  0d b0 03 51 08 ff 08 ff 03 18 24 4b 20 43 fc 0a
+//	out: 18 24 4b
+func Asks(msg []byte) []byte {
+	if Class(msg) != ClassPanel || len(msg) < 9 || msg[3] != 0x51 {
+		return nil
+	}
+
+	n := int(msg[8])
+	if n == 0 || len(msg) < 9+n {
+		return nil
+	}
+	return slices.Clone(msg[9 : 9+n])
+}
+
 func flag(on bool) byte {
 	if on {
 		return 0x01
