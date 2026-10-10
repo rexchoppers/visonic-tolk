@@ -47,6 +47,7 @@ type Conn struct {
 type outbound struct {
 	data    []byte
 	wantAck bool
+	hangup  bool
 }
 
 func New(name string, c net.Conn, split bufio.SplitFunc, log *slog.Logger) *Conn {
@@ -65,6 +66,12 @@ func (c *Conn) Name() string { return c.name }
 
 // Close drops the connection, which ends its Run.
 func (c *Conn) Close() error { return c.net.Close() }
+
+// Hangup closes the connection once everything queued before it is written,
+// so a last reply is not lost to the close racing it.
+func (c *Conn) Hangup() {
+	c.out <- outbound{hangup: true}
+}
 
 // Send queues data. It blocks once the queue is full, so a peer that has
 // stopped reading slows its sender rather than growing a backlog.
@@ -143,6 +150,10 @@ func (c *Conn) send(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case m := <-c.out:
+			if m.hangup {
+				c.net.Close()
+				return
+			}
 			if _, err := c.net.Write(m.data); err != nil {
 				c.log.Error("write failed", "conn", c.name, "err", err)
 				return

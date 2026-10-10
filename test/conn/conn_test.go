@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"net"
 	"testing"
@@ -213,5 +214,24 @@ func TestScannerSplitIsUsed(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no token")
+	}
+}
+
+func TestHangupWritesWhatWasQueuedFirst(t *testing.T) {
+	near, far := pair(t)
+
+	c := conn.New("visonic", near, powerlink31.SplitFrames, discard())
+	run(t, c, nil)
+
+	last := frame(1, []byte{0x0d, 0x02, 0x43, 0xba, 0x0a})
+	c.Send(last, false)
+	c.Hangup()
+
+	if got := read(t, far, len(last), time.Second); !bytes.Equal(got, last) {
+		t.Fatalf("wire got %q, want %q before the close", got, last)
+	}
+	far.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := far.Read(make([]byte, 1)); err != io.EOF {
+		t.Errorf("read after the hangup: %v, want EOF", err)
 	}
 }

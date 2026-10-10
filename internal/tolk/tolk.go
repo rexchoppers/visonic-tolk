@@ -346,7 +346,7 @@ func (t *Tolk) apply(from route.Peer, p *panel, f powerlink31.Frame, plan route.
 
 	if plan.Drop {
 		if v := t.visonicOf(p); v != nil {
-			v.Close()
+			v.Hangup()
 		}
 	}
 }

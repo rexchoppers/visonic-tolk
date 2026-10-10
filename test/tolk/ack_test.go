@@ -3,6 +3,7 @@ package tolktest
 import (
 	"bufio"
 	"bytes"
+	"net"
 	"testing"
 	"time"
 
@@ -62,6 +63,33 @@ func TestAnAcknowledgedMessageLetsTheNextOneStraightOut(t *testing.T) {
 
 	if waited := time.Since(started); waited > 2*time.Second {
 		t.Errorf("second message took %v after the ack, want it straight out", waited)
+	}
+}
+
+// The close used to race the queued ack, so Visonic asked to hang up and never
+// heard back.
+func TestACloudDisconnectIsAcknowledgedBeforeTheLinkDrops(t *testing.T) {
+	panelAddr, _, cloudConns := start(t)
+	pan := dial(t, panelAddr)
+
+	var cloudConn net.Conn
+	select {
+	case cloudConn = <-cloudConns:
+	case <-time.After(2 * time.Second):
+		t.Fatal("tolk never dialled the cloud")
+	}
+
+	// Speak once so tolk learns the addressing to answer with.
+	pan.Write(frame(1, []byte{0x0d, 0x06, 0xf9, 0x0a}).Encode())
+	expect(t, cloudConn, []byte{0x0d, 0x06, 0xf9, 0x0a})
+
+	cloudConn.Write(frame(9, message.Disconnect).Encode())
+
+	got := waitForFrame(t, cloudConn, func(f powerlink31.Frame) bool {
+		return f.Type == powerlink31.TypeAck && f.MsgID == 9
+	})
+	if got == nil {
+		t.Fatal("the cloud's disconnect was never acknowledged")
 	}
 }
 
